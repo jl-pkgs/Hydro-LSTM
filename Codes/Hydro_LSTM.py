@@ -31,21 +31,17 @@ class Model_hydro_lstm(nn.Module):
             h_0 = x.data.new(1, self.state_size).zero_()
             # initialization of the previous state
             c_0 = x.data.new(1, self.state_size).zero_()
-
-
         else:
             h_0 = torch.ones(1, self.state_size).to(
                 self.DEVICE)*self.h_t.data[-1].to(self.DEVICE)
             c_0 = torch.ones(1, self.state_size).to(
                 self.DEVICE)*self.c_t.data[-1].to(self.DEVICE)
 
-
         self.h_t, self.c_t = self.hydro_lstm(x, h_0, c_0)
 
         if self.state_size != 1:
             self.h_t_dropout = self.dropout(self.h_t)
             q_t = self.regression(self.h_t_dropout)
-
         else:
             q_t = self.regression(self.h_t)
 
@@ -79,9 +75,7 @@ class HYDRO_LSTM(nn.Module):
 
 
     def forward(self, x: torch.Tensor, h_0, c_0):
-
         batch_size = x.size(0)  # checking the batch size
-
         x_transp = torch.transpose(x, 0, 1)
 
         h_n = h_0
@@ -91,8 +85,7 @@ class HYDRO_LSTM(nn.Module):
         c_0 = torch.diagflat(c_0)
 
         for it in range(batch_size):
-            x_t = x_transp.data[:, it]
-            x_t = x_t.resize(self.input_size, 1)
+            x_t = x_transp.data[:, it].view(self.input_size, 1)
 
             if self.state_size == 1:
                 gates = (torch.addmm(self.bias, self.weight_recur, h_0) + torch.mm(self.weight_input, x_t))  # calculate gates
@@ -136,6 +129,5 @@ class HYDRO_LSTM(nn.Module):
             c_1 = c_1.unsqueeze(dim=0)
             h_n = torch.cat((h_n, h_1), 0)
             c_n = torch.cat((c_n, c_1), 0)
-
 
         return h_n, c_n

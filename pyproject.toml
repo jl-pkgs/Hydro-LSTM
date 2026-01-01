@@ -1,0 +1,23 @@
+[project]
+name = "hydro-lstm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+	"torch",
+	"torchvision",
+	"torchaudio",
+	"pandas",
+	"numpy",
+	"matplotlib",
+	"tqdm",
+	"scikit-learn",
+]
+
+[tool.setuptools]
+package-dir = {"" = "Codes"}
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

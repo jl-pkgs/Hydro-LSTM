@@ -55,9 +55,8 @@ def importing(catchment:str, country:str):
         exit(0)
         
     elif country == "US":
-        current_path = os.getcwd()
-        path = os.path.abspath(os.path.join(current_path, os.pardir)) + '/data/'
-        #path = './data/'
+        # Get the project root directory (one level up from 'Codes')
+        path = Path(__file__).resolve().parent.parent / 'data'
     path = Path(path)
 
     # Loading data
@@ -75,16 +74,13 @@ def importing(catchment:str, country:str):
             HUC = str(HUC)
 
         forcing_file = catchment + '_lump_maurer_forcing_leap.txt'
-        forcing_path = path / 'basin_mean_forcing' / 'maurer_extended' / HUC # I have to generalize that
-        forcing_path = os.getcwd() / forcing_path / forcing_file
+        forcing_path = path / 'basin_mean_forcing' / 'maurer_extended' / HUC / forcing_file
         
         Q_file = catchment + '_streamflow_qc.txt'
-        Q_path = path / 'usgs_streamflow' / HUC # I have to generalize that
-        Q_path = os.getcwd() / Q_path / Q_file
+        Q_path = path / 'usgs_streamflow' / HUC / Q_file
 
         Topo_file = 'camels_topo.txt'
-        Topo_path = path / 'camels_attributes_v2.0'
-        Topo_path = os.getcwd() / Topo_path / Topo_file
+        Topo_path = path / 'camels_attributes_v2.0' / Topo_file
 
 
     elif country == "CL":
@@ -101,12 +97,12 @@ def importing(catchment:str, country:str):
 
         forcing_df = pd.read_csv(forcing_path, sep='\s+', header=3)
         dates = (forcing_df.Year.map(str) + "/" + forcing_df.Mnth.map(str) + "/" + forcing_df.Day.map(str))
-        jul = pd.to_datetime(forcing_df.Year.map(str), format="%Y/%m/%d")
+        jul = pd.to_datetime(forcing_df.Year.map(str), format="%Y")
         forcing_df.index = pd.to_datetime(dates, format="%Y/%m/%d")
         forcing_df = forcing_df.drop(['Year','Mnth','Day','Hr','dayl(s)'], axis=1)
         forcing_df['basin'] = int(catchment)
 
-        PP_df = forcing_df.loc[:,{'basin', 'prcp(mm/day)'}]
+        PP_df = forcing_df.loc[:,['basin', 'prcp(mm/day)']]
         PP_df.rename(columns={"prcp(mm/day)": 'PP'}, inplace=True)
 
         forcing_df['PET'] = 0.408*0.0023*(forcing_df['tmax(C)'] - forcing_df['tmin(C)'])**0.5*(0.5*forcing_df['tmax(C)'] + 0.5*forcing_df['tmin(C)'] + 17.8)
@@ -117,9 +113,9 @@ def importing(catchment:str, country:str):
 
         forcing_df['basin'] = int(catchment)
 
-        PP_df = forcing_df.loc[:, {'basin', 'prcp(mm/day)'}]
+        PP_df = forcing_df.loc[:, ['basin', 'prcp(mm/day)']]
         PP_df.rename(columns={'prcp(mm/day)': 'PP'}, inplace=True)
-        PET_df = forcing_df.loc[:, {'basin', 'PET'}]
+        PET_df = forcing_df.loc[:, ['basin', 'PET']]
 
         with open(forcing_path, 'r') as fp:
             content = fp.readlines()
@@ -136,21 +132,21 @@ def importing(catchment:str, country:str):
         PP_df.rename(columns={'gauge_id': 'date'}, inplace=True)
         PP_df.index = pd.to_datetime(PP_df['date'], format="%Y/%m/%d")
         PP_df['basin'] = int(catchment)
-        PP_df = PP_df.loc[:,{'basin', catchment}]
+        PP_df = PP_df.loc[:,['basin', catchment]]
         PP_df.rename(columns={catchment: 'PP'}, inplace=True)
 
         PET_df = pd.read_csv(PET_forcing_path, sep='\t')
         PET_df.rename(columns={'gauge_id': 'date'}, inplace=True)
         PET_df.index = pd.to_datetime(PET_df['date'], format="%Y/%m/%d")
         PET_df['basin'] = int(catchment)
-        PET_df = PET_df.loc[:,{'basin', catchment}]
+        PET_df = PET_df.loc[:,['basin', catchment]]
         PET_df.rename(columns={catchment: 'PET'}, inplace=True)
 
         Q_df = pd.read_csv(Q_forcing_path, sep='\t', low_memory=False)
         Q_df.rename(columns={'gauge_id': 'date'}, inplace=True)
         Q_df.index = pd.to_datetime(Q_df['date'], format="%Y/%m/%d")
         Q_df['basin'] = int(catchment)
-        Q_df = Q_df.loc[:,{'basin', catchment}]
+        Q_df = Q_df.loc[:,['basin', catchment]]
         Q_df.rename(columns={catchment: 'Q_obs'}, inplace=True)
 
     return PP_df, PET_df, Q_df

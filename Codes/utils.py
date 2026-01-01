@@ -20,153 +20,70 @@ import sys
 #%%
 def load_data(code, country, warm_up):
     PP, PET, Q = importing(code, country)
-       
-    Q['Q_obs'] = pd.to_numeric(Q['Q_obs'],errors = 'coerce')
-
+    Q['Q_obs'] = pd.to_numeric(Q['Q_obs'], errors='coerce')
     Q = Q[:PP.index[-1]]
-
-    Q_nan = Q.dropna()
-    if PP.index[0] + pd.DateOffset(days=warm_up) < Q_nan.index[0]:
-        PP = PP[Q_nan.index[0] - pd.DateOffset(days=warm_up):]
-        PET = PET[Q_nan.index[0] - pd.DateOffset(days=warm_up):]
-        Q = Q[Q_nan.index[0]:]
-    else:
-        Q = Q[PP.index[0] + pd.DateOffset(days=warm_up):]
-    return PP, PET, Q
+    
+    # Align start date based on warm_up and available Q data
+    start_date = max(PP.index[0] + pd.DateOffset(days=warm_up), Q.dropna().index[0])
+    return PP[start_date - pd.DateOffset(days=warm_up):], PET[start_date - pd.DateOffset(days=warm_up):], Q[start_date:]
 
 #%%
 class torch_dataset():
-    
-    def __init__(self, PP,PET,Q, lag, ini_training, x_max, x_min, x_mean, y_max, y_min, y_mean, istrain):
-              
-        for i in range(1,lag):
-
-            PP_name = 'PP_' + str(i)
-            PP_copy = PP.copy()
-            PP_copy[PP_name] = PP['PP'].shift(i)
-            PP = PP_copy.copy()
-
-            
-            PET_name = 'PET_' + str(i)
-            PET_copy = PET.copy()
-            PET_copy[PET_name] = PET['PET'].shift(i)
-            PET = PET_copy.copy()
-                  
-        X = pd.concat([PP, PET], axis=1)
-        X = X.drop('basin', axis=1)
-        X.at[:,'Q'] = Q.Q_obs #        X['Q'] = Q.Q_obs
-
-        X = X.loc[ini_training - timedelta(days=1)  :,:]
-        X = X.drop('Q', axis=1)
-
+    def __init__(self, PP, PET, Q, lag, ini_training, x_max, x_min, x_mean, y_max, y_min, y_mean, istrain):
+        # Vectorized shifting for PP and PET
+        pp_cols = [PP['PP'].shift(i).rename(f'PP_{i}' if i > 0 else 'PP') for i in range(lag)]
+        pet_cols = [PET['PET'].shift(i).rename(f'PET_{i}' if i > 0 else 'PET') for i in range(lag)]
+        X = pd.concat(pp_cols + pet_cols, axis=1).loc[ini_training - timedelta(days=1):].dropna()
+        
+        y = Q.loc[X.index, 'Q_obs'].values
         x = X.values
-        Q = Q.loc[X.index]
-        y = Q.Q_obs.values
         
-        if istrain:          
-            self.x_max = x.max(axis=0)
-            self.x_min = x.min(axis=0)
-            self.x_mean = x.mean(axis=0) #[-1,1]
-        
-            self.y_max = y.max()
-            self.y_min = y.min()
-            self.y_mean = y.mean() #[-1,1]
+        if istrain:
+            self.x_max, self.x_min, self.x_mean = x.max(0), x.min(0), x.mean(0)
+            self.y_max, self.y_min, self.y_mean = y.max(), y.min(), y.mean()
         else:
-            self.x_max = x_max
-            self.x_min = x_min
-            self.x_mean = x_mean
-            self.y_max = y_max
-            self.y_min = y_min
-            self.y_mean = y_mean
+            self.x_max, self.x_min, self.x_mean = x_max, x_min, x_mean
+            self.y_max, self.y_min, self.y_mean = y_max, y_min, y_mean
                 
-        y = (y - self.y_mean)/(self.y_max - self.y_min)
-        x = (x - self.x_mean)/(self.x_max - self.x_min) 
-        
-        self.x = torch.from_numpy(x.astype(np.float32))
-        self.y = torch.from_numpy(y.astype(np.float32))
-        self.num_samples = self.x.shape[0]       
-        
-    def __len__(self):
-        return self.num_samples   
+        # Normalize and convert to torch tensors
+        self.x = torch.from_numpy(((x - self.x_mean) / (self.x_max - self.x_min)).astype(np.float32))
+        self.y = torch.from_numpy(((y - self.y_mean) / (self.y_max - self.y_min)).astype(np.float32))
+        self.num_samples = len(self.y)
 
-    def __getitem__(self, idx: int):
-        return self.x[idx], self.y[idx]
+    def __len__(self): return self.num_samples   
+    def __getitem__(self, idx): return self.x[idx], self.y[idx]
     
 #%%
 def train_epoch(model, optimizer, loss_func, loader, epoch, loader_valid, patience, model_list, mean_valid_losses, DEVICE):
-     
-    
-    stopping = False
-    
     model.train()
-    pbar = tqdm(loader, file=sys.stdout)
-    pbar.set_description(f'# Epoch {epoch}')
-    # Iterate in batches over training set
     train_losses = []
-    for data in pbar:
-        
-        optimizer.zero_grad()# delete old gradients
-        x, y = data
-        x, y = x.to(DEVICE), y.to(DEVICE)
-        y = y.resize(len(y),1) #y.resize_(len(y),1) #
-        
-        model.epoch = epoch
-        model.DEVICE = DEVICE
-        predictions = model(x)[0]
-        c_pred = model.c_t.data
-                
-        loss = loss_func(predictions, y)
-        loss.backward()
-
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-        
-        optimizer.step() # perform parameter update
-
-        train_losses.append(loss.item())
-        #pbar.set_postfix_str(f"Loss: {loss.item():5f}")
+    with tqdm(loader, file=sys.stdout, leave=False, desc=f'# Epoch {epoch}') as pbar:
+        for x, y in pbar:
+            optimizer.zero_grad()
+            x, y = x.to(DEVICE), y.to(DEVICE).view(-1, 1)
+            model.epoch, model.DEVICE = epoch, DEVICE
+            loss = loss_func(model(x)[0], y)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+            optimizer.step()
+            train_losses.append(loss.item())
        
-    total = sum(train_losses)
-    length = len(train_losses)
-    mean_loss = total/length
-    print(f"Loss_train: {mean_loss:5f}")
-    
-    # Iterate in batches over valid set
+    model.eval()
     valid_losses = []
+    with torch.no_grad():
+        for x, y in loader_valid:
+            x, y = x.to(DEVICE), y.to(DEVICE).view(-1, 1)
+            valid_losses.append(loss_func(model(x)[0], y).item())
 
-    for data in loader_valid:
-
-        x_valid, y_valid = data
-       
-        x_valid, y_valid = x_valid.to(DEVICE), y_valid.to(DEVICE)
-        y_valid = y_valid.resize(len(y_valid),1) 
-        
-        pred_valid = model(x_valid)[0]
-                
-        loss_valid = loss_func(pred_valid, y_valid)
-
-        valid_losses.append(loss_valid.item())
-        #print(valid_losses)
-
-
-    total_valid = sum(valid_losses)
-    length_valid = len(valid_losses)
-    epoch_valid_loss = total_valid/length_valid
-    mean_valid_losses.append(epoch_valid_loss)
+    mean_valid = np.mean(valid_losses)
+    mean_valid_losses.append(mean_valid)
     
-    print(f"Loss_valid: {epoch_valid_loss:5f}")
+    if epoch == 1 or epoch % 5 == 0:
+        print(f"Epoch {epoch:3d} | Train Loss: {np.mean(train_losses):.6f} | Valid Loss: {mean_valid:.6f}")
     
     model_list.append(model)     
-
-    # if epoch >= patience:
-    #     if valid_losses[epoch-1] > valid_losses[epoch - patience]:
-    #         model = model_list[valid_losses.index(min(valid_losses))]
-    #         #model = model_list[epoch - patience]
-    #         print("Early stopping")
-    #         stopping = True
-
-    if epoch == patience:
-        index_best = mean_valid_losses.index(min(mean_valid_losses))
-        model = model_list[index_best]
-        print(f"Best model is selected in epoch: {int(index_best +1)}")
-        stopping = True
+    stopping = (epoch == patience)
+    if stopping:
+        print(f"Best model selected from epoch: {np.argmin(mean_valid_losses) + 1}")
+        
     return stopping, model_list, mean_valid_losses

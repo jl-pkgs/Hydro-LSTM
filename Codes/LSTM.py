@@ -86,8 +86,7 @@ class LSTM(nn.Module):
             
             for seq in range(self.sequence + 1):
                 #print(self.sequence)
-                x_t = x_transp.data[(self.sequence - seq, self.sequence*2 + 1 - seq), it]
-                x_t = x_t.resize(self.input_size, 1)
+                x_t = x_transp.data[(self.sequence - seq, self.sequence*2 + 1 - seq), it].view(self.input_size, 1)
     
                 if self.state_size == 1:
                     gates = (torch.addmm(self.bias, self.weight_recur, h_0) + torch.mm(self.weight_input, x_t))  # calculate gates

@@ -6,3 +6,12 @@ Codes/__pycache__/importing.cpython-38.pyc
 Codes/__pycache__/LSTM.cpython-38.pyc
 Codes/__pycache__/utils.cpython-38.pyc
 Notebooks/.ipynb_checkpoints/Figures-checkpoint.ipynb
+
+*.egg-info
+__pycache__
+.ipynb_checkpoints
+*.png
+
+# julia
+Manifest.toml
+*test*

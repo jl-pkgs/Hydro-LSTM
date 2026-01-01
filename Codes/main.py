@@ -8,6 +8,11 @@ EGUsphere [preprint], https://doi.org/10.5194/egusphere-2023-666, 2023.
 
 """
 #%% Libraries
+import os
+import sys
+# Add the directory containing this file to sys.path to allow running from root
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import argparse
 #from typing import Tuple
 import torch
@@ -448,7 +453,7 @@ for lag in lag_values:
                 x_epoch, y_epoch = data
 
                 x_epoch, y_epoch = x_epoch.to(DEVICE), y_epoch.to(DEVICE)
-                y_epoch = y_epoch.resize(len(y_epoch),1)
+                y_epoch = y_epoch.view(-1, 1)
 
                 pred_epoch = model(x_epoch)[0]
                 c_epoch = model(x_epoch)[2]
