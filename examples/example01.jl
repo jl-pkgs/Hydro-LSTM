@@ -1,12 +1,15 @@
-using NPZ, Statistics, Flux, MLUtils, Plots, LinearAlgebra, Printf, UnPack
+using NPZ, Statistics, Flux, MLUtils, Plots, LinearAlgebra, Printf, UnPack, Random
 import HydroTools: of_NSE
 
-include("Codes/Hydro_LSTM.jl")
+# 设置随机种子以确保结果可复现
+Random.seed!(1234)
+
+include("../Codes/Hydro_LSTM.jl")
 
 # --- 配置参数 ---
 config = (
   code="11523200",
-  cells=4,
+  cells=1,
   memory=64,
   epochs=50,
   lr=1e-3,
@@ -21,7 +24,8 @@ data = Dict(Symbol(k) => v for (k, v) in npzread("data/preprocessed_data.npz"))
 y_max, y_min, y_mean = y_stats
 
 # 数据加载器 (Flux 期望特征在第一维)
-train_loader = DataLoader((collect(X_train'), collect(Y_train')), batchsize=batch_size, shuffle=true)
+shuffle = false
+train_loader = DataLoader((collect(X_train'), collect(Y_train')); batchsize=batch_size, shuffle)
 X_v, Y_obs_v = collect(X_valid'), collect(Y_valid')
 
 # 初始化模型
@@ -30,8 +34,8 @@ opt = Flux.setup(Flux.Adam(lr), model)
 
 # --- 损失函数 ---
 function loss_fn(y_obs, y_sim)
-  # Flux.huber_loss(y_sim, y_obs) # 默认 Huber 损失
-  -of_NSE(y_obs[:], y_sim[:]) # NSE 损失
+  Flux.huber_loss(y_sim, y_obs) # 默认 Huber 损失
+  # -of_NSE(y_obs[:], y_sim[:]) # NSE 损失
 end
 
 # 训练循环
@@ -40,9 +44,11 @@ for epoch in 1:epochs
   loss = 0.0
   for (x, y_obs) in train_loader
     # 每个 batch 重置状态，因为 shuffle=true
-    model.h_t = nothing
-    model.c_t = nothing
-    
+    if shuffle
+      model.h_t = nothing
+      model.c_t = nothing
+    end
+
     l, grads = Flux.withgradient(m -> loss_fn(y_obs', m(x', 1)), model)
     Flux.update!(opt, model, grads[1])
     loss += l

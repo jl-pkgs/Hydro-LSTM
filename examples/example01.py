@@ -12,6 +12,14 @@ from Hydro_LSTM import Model_hydro_lstm
 from LSTM import Model_lstm
 from utils import load_data, torch_dataset, train_epoch
 
+# Set seeds for reproducibility
+torch.manual_seed(1234)
+np.random.seed(1234)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(1234)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 # --- Configuration ---
 code = 11523200
 model_option = "HYDRO"
